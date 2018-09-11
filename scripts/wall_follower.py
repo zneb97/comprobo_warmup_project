@@ -12,7 +12,7 @@ Use line of best fit on laser scan data to estimate wall (Theil-sen, RANSAC)
 
 import rospy
 import math
-from std_msgs.msg import String
+from std_msgs.msg import Int64
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Pose, Twist, Vector3
 
@@ -39,6 +39,7 @@ class WallFollower:
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
+        self.vizPub = rospy.Publisher('/wall_viz', Int64, queue_size=2)
         rospy.init_node('WallFollower')
         self.rate = rospy.Rate(2)
         rospy.Subscriber("/scan", LaserScan, self.checkLaser)
@@ -79,6 +80,8 @@ class WallFollower:
         else:
             self.angPerp = angDifferences.index(min(angDifferences))+self.scanSections/2
 
+        #For wall vizualizer
+        self.vizPub.publish(self.angPerp)
 
     def publish(self, linX, angZ):
         """
