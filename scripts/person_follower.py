@@ -13,6 +13,7 @@ import rospy
 import math
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Pose, Twist, Vector3
+from visualization_msgs.msg import Marker
 
 
 class PersonFollower:
@@ -39,6 +40,7 @@ class PersonFollower:
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
+        self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
         rospy.init_node('PersonFollower')
         self.rate = rospy.Rate(2)
         rospy.Subscriber("/scan", LaserScan, self.checkLaser)
@@ -85,6 +87,14 @@ class PersonFollower:
             self.linLoc = sumLin/count
             self.angLoc = sumAng/count
 
+            #Visualize person
+            if (self.angLoc < self.angScan/2):
+                laserAng = self.angScan/2 - self.angLoc
+            else:
+                laserAng = 360 - (self.angLoc -self.angScan/2)
+            self.visualize(math.radians(laserAng), msg.ranges[int(laserAng)])
+
+
     def publish(self, linX, angZ):
         """
         Publish a given velocity
@@ -94,11 +104,40 @@ class PersonFollower:
         self.pub.publish(Twist(linear=self.linVector, angular=self.angVector))
 
 
-    def visualize(self):
+    def visualize(self, laserAng, laserDist):
         """
-        Visualize the location of the person using rviz
+        Visualize the location of the person relative to the robot using rviz
         """
-        return 0
+
+        #Set up marker
+        marker = Marker()
+        marker.header.frame_id = "base_link"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "myMarker"
+        marker.id = 0
+        marker.type = 3 #Sphere
+        marker.action = 0 #Add
+
+        if laserAng < self.angScan:
+            marker.pose.position.x = laserDist*math.cos(laserAng)
+            marker.pose.position.y = laserDist*math.sin(laserAng)
+        else:
+            marker.pose.position.x = laserDist*math.cos(laserAng)
+            marker.pose.position.y = -laserDist*math.sin(laserAng)
+
+        marker.pose.position.z = 0
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = .1
+        marker.scale.y = .1
+        marker.scale.z = 1
+        marker.color.a = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+        self.vizPub.publish(marker)
 
 
     def normalizeNeg(self, val, rMin, rMax):
@@ -114,6 +153,8 @@ class PersonFollower:
 
     def normalize(self, val, rMin, rMax):
         """
+        TODO: make a single normalize function
+
         Normalize a value in a given range to between 0 and 1.
 
         val - the value to normalize
@@ -128,6 +169,8 @@ class PersonFollower:
         Turn to center the center mass and move to keep the center of mass
         a certain distance and keep it there.
         """
+        while(not rospy.is_shutdown()):
+            continue
         while((self.linLoc == None) and not rospy.is_shutdown()):
             print("Waiting for data")
 
