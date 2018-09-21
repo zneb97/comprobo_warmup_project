@@ -15,6 +15,9 @@ import math
 from std_msgs.msg import Int64
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Pose, Twist, Vector3
+from nav_msgs.msg import Odometry
+from visualization_msgs.msg import Marker
+
 
 
 class WallFollower:
@@ -36,13 +39,39 @@ class WallFollower:
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.angVector = Vector3(x=0.0, y=0.0, z=0.0)
+        self.x = 0
+        self.y = 0
+        self.theta = 0
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
-        self.vizPub = rospy.Publisher('/wall_viz', Int64, queue_size=2)
+        self.vizPub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
         rospy.init_node('WallFollower')
         self.rate = rospy.Rate(2)
         rospy.Subscriber("/scan", LaserScan, self.checkLaser)
+        rospy.Subscriber("/odom", Odometry, self.getHeading)
+
+
+    def setLocation(self, odom):
+        """ 
+        Convert pose (geometry_msgs.Pose) to a (x, y, theta) tuple 
+        Constantly being called as it is the callback function for this node's subscription
+
+        odom is Neato ROS' nav_msgs/Odom msg composed of pose and orientation submessages
+
+        Used for visualization
+        """
+        pose = odom.pose.pose
+        orientation_tuple = (pose.orientation.x,
+                             pose.orientation.y,
+                             pose.orientation.z,
+                             pose.orientation.w)
+        angles = euler_from_quaternion(orientation_tuple)
+        self.x = pose.position.x
+        self.y = pose.position.y
+        self.theta = angles[2]
+
+        return (pose.position.x, pose.position.y, angles[2])
 
 
     def checkLaser(self, msg):
@@ -80,8 +109,51 @@ class WallFollower:
         else:
             self.angPerp = angDifferences.index(min(angDifferences))+self.scanSections/2
 
-        #For wall vizualizer
-        self.vizPub.publish(self.angPerp)
+        
+        #Visualize the wall
+        marker = Marker()
+        marker.header.frame_id = "odom"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "myMarker"
+        marker.id = 0
+        marker.type = 8 #Points
+        marker.action = 0 #Add
+        marker.scale.x = .1
+        marker.scale.y = .1
+        marker.scale.z = .1
+        marker.color.a = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+        marker.points = []
+
+        #Deal with angle wrapping
+        if self.angPerp + 25 > 359:
+            for i in range(self.angPerp-25,359):
+                marker.points.append(self.getPoint(i,msg.ranges[i]))
+            for i in range(0, self.perp+25-360):
+                marker.points.append(self.getPoint(i,msg.ranges[i]))
+
+        elif self.angPerp - 25 < 0:
+            for i in range(self.angPerp-25,359):
+                marker.points.append(self.getPoint(i,msg.ranges[i]))
+            for i in range(0, self.perp+25-360):
+                marker.points.append(self.getPoint(i,msg.ranges[i]))
+
+        else:
+            for i in range(self.angPerp-25,self.angPerp+25):
+                marker.points.append(self.getPoint(i,msg.ranges[i]))
+
+        self.vizPub.publish(marker)
+
+
+
+
+    def getPoint(self, angle, distance):
+        fixed_frame_point_angle = self.theta + math.radians(angle) # angle of robot + angle of point
+        x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
+        y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
+        return Vector3(x = x_position, y = y_position)
 
     def publish(self, linX, angZ):
         """
@@ -129,6 +201,7 @@ class WallFollower:
                 angZ = self.normalize(self.angPerp, 270, 360)*self.kP
                 
 
+            self.visualize()
             self.publish(0.1, angZ)
             self.rate.sleep()
 

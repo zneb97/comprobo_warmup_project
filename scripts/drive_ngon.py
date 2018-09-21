@@ -226,7 +226,7 @@ class ShapeDriver:
 
 
 if __name__ == '__main__':
-    shapeDriver = ShapeDriver(8,1)
+    shapeDriver = ShapeDriver(4,1)
     try:
         shapeDriver.run()
     except rospy.ROSInterruptException:

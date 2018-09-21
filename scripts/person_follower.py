@@ -29,14 +29,14 @@ class PersonFollower:
         self.pAngLoc = None
 
         #Angular and depth area to scan in front of the robot for object
-        self.depthScan = 2 #meters
+        self.depthScan = 1.5 #meters
         self.angScan = 90 #degrees
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.angVector = Vector3(x=0.0, y=0.0, z=0.0)
-        self.kPLin = 0.5
-        self.kPAng = 0.6
+        self.kPLin = 0.3
+        self.kPAng = 0.75
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
@@ -169,8 +169,6 @@ class PersonFollower:
         Turn to center the center mass and move to keep the center of mass
         a certain distance and keep it there.
         """
-        while(not rospy.is_shutdown()):
-            continue
         while((self.linLoc == None) and not rospy.is_shutdown()):
             print("Waiting for data")
 
