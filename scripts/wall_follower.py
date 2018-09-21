@@ -17,6 +17,7 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Pose, Twist, Vector3
 from nav_msgs.msg import Odometry
 from visualization_msgs.msg import Marker
+from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix
 
 
 
@@ -49,7 +50,7 @@ class WallFollower:
         rospy.init_node('WallFollower')
         self.rate = rospy.Rate(2)
         rospy.Subscriber("/scan", LaserScan, self.checkLaser)
-        rospy.Subscriber("/odom", Odometry, self.getHeading)
+        rospy.Subscriber("/odom", Odometry, self.setLocation)
 
 
     def setLocation(self, odom):
@@ -127,33 +128,35 @@ class WallFollower:
         marker.color.b = 0.0
         marker.points = []
 
+        #How many degrees to scan on either side of perpendicular for visualizing wall
+        scanAng = 25
+
         #Deal with angle wrapping
-        if self.angPerp + 25 > 359:
-            for i in range(self.angPerp-25,359):
+        if self.angPerp + scanAng > 359:
+            for i in range(self.angPerp-scanAng, 359):
                 marker.points.append(self.getPoint(i,msg.ranges[i]))
-            for i in range(0, self.perp+25-360):
+            for i in range(0, self.angPerp+scanAng-360):
                 marker.points.append(self.getPoint(i,msg.ranges[i]))
 
-        elif self.angPerp - 25 < 0:
-            for i in range(self.angPerp-25,359):
+        elif self.angPerp - scanAng < 0:
+            for i in range(0,self.angPerp+scanAng):
                 marker.points.append(self.getPoint(i,msg.ranges[i]))
-            for i in range(0, self.perp+25-360):
+            for i in range(360-(scanAng-self.angPerp), 359):
                 marker.points.append(self.getPoint(i,msg.ranges[i]))
 
         else:
-            for i in range(self.angPerp-25,self.angPerp+25):
+            for i in range(self.angPerp-scanAng,self.angPerp+scanAng):
                 marker.points.append(self.getPoint(i,msg.ranges[i]))
 
         self.vizPub.publish(marker)
 
 
+    def getPoint(self, angle, dist):
+        referenceAng = self.theta + math.radians(angle) # angle of robot + angle of point
+        pointX = self.x + math.cos(referenceAng) * dist
+        pointY = self.y + math.sin(referenceAng) * dist
+        return Vector3(x=pointX, y=pointY)
 
-
-    def getPoint(self, angle, distance):
-        fixed_frame_point_angle = self.theta + math.radians(angle) # angle of robot + angle of point
-        x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
-        y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
-        return Vector3(x = x_position, y = y_position)
 
     def publish(self, linX, angZ):
         """
@@ -200,8 +203,6 @@ class WallFollower:
             elif (self.angPerp >= 270) and (self.angPerp < 360):
                 angZ = self.normalize(self.angPerp, 270, 360)*self.kP
                 
-
-            self.visualize()
             self.publish(0.1, angZ)
             self.rate.sleep()
 

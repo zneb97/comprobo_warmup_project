@@ -20,9 +20,10 @@ class PersonFollower:
 
     def __init__(self):
 
-        #Location of the person. Goal is to get this to 1 meters and 0 degrees
+        #Location of the person. Goal is to get this to goalLoc meters and 0 degrees
         self.linLoc = None 
         self.angLoc = None
+        self.goalLoc = 1
 
         #Previous location of the person. TODO use this not get distracted by objects
         self.pLinLoc = None
@@ -173,7 +174,7 @@ class PersonFollower:
             print("Waiting for data")
 
         while not rospy.is_shutdown():
-            if self.linLoc < 1:
+            if self.linLoc < self.goalLoc:
                 linX = 0
             else:
                 linX = self.normalize(self.linLoc, 0.25, self.depthScan)*self.kPLin

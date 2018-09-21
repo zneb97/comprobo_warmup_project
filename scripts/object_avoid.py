@@ -3,10 +3,10 @@
 Ben Ziemann
 Last updated: 9/9/18
 
-Have the Neato follow a person
+Have the Neato move in a general direction avoiding obstacles
 
-Extension:
-Use comparisons to previous location to avoid confusin due to large objects
+TODO:
+Make better proportional control
 """
 
 import rospy
@@ -21,24 +21,17 @@ class ObjectAvoid:
     def __init__(self):
 
         #Potential field properities
-        self.spread = 2
-        self.radius = .25
-
-        #List of locations of obstacles
-        self.xObs = []
-        self.yObs = []
-
-        #Force vector on robot
-        self.fVecX = 0
-        self.fVecY = 0
-        self.fr = 0
-        self.fAng = 0
+        self.spread = 1 #how far the potential field has influence
+        self.radius = .25 #Radius of any given point
+        self.goalDist = 1
+        self.goalAng = 0
 
         #Robot properities
         self.linVector = Vector3(x=0.0, y=0.0, z=0.0)
         self.angVector = Vector3(x=0.0, y=0.0, z=0.0)
-        self.kPLin = 0.5
-        self.kPAng = 0.6
+        self.kPLin = .5
+        self.kPAng = 1
+
 
         #ROS
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=2)
@@ -46,37 +39,6 @@ class ObjectAvoid:
         self.rate = rospy.Rate(2)
         rospy.Subscriber("/scan", LaserScan, self.checkLaser)
 
-
-    def checkLaser(self, msg):
-        """
-        Identify all potential obstacles and transform polar to cartesian
-        coordians for easier summation vector work
-        """
-
-        #Collect range values then average. The closer to something the slower it goes linearly
-        closeness = []
-        #Sum forces of angles of objects around it
-
-
-        for i in range(0, 45):
-            if (msg.ranges[i] != 0.0) and (msg.ranges[i] < 2.0):
-                closeness.append(msg.ranges[i])
-
-                # self.xObs.append(math.cos(math.radians(i))*msg.ranges[i])
-                # self.yObs.append(math.sin(math.radians(i))*msg.ranges[i])
-
-        for i in range(315, 360):
-            if (msg.ranges[i] != 0.0) and (msg.ranges[i] < 2.0):
-                closeness.append(msg.ranges[i])
-
-                # self.xObs.append(math.cos(math.radians(i))*msg.ranges[i])
-                # self.yObs.append(math.sin(math.radians(i))*msg.ranges[i])
-    
-        # for i in range(len(self.xObs)):
-        #     print(self.xObs[i], self.yObs[i])
-        # print("----------------------------------------------------")
-        self.vectorize()
-        
 
     def publish(self, linX, angZ):
         """
@@ -87,44 +49,100 @@ class ObjectAvoid:
         self.pub.publish(Twist(linear=self.linVector, angular=self.angVector))
 
 
-    def vectorize(self):
+    def getDist(self, x, y):
         """
-        Turn identified points into directed forces and sum
-        Spread and effectiveness based on linked paper in project page
-        https://phoenix.goucher.edu/~jillz/cs325_robotics/goodrich_potential_fields.pdf
+        Returns the distance between (0,0) (the robot) and a point
         """
-        self.fVecX = 0
-        self.fVecY = 0
-
-        #Sum forces in cartestian
-        for i in range(len(self.yObs)):
-            dist = math.sqrt( math.pow(self.yObs[i],2) + math.pow(self.xObs[i],2) )
-            ang = math.atan2(self.yObs[i], self.xObs[i])
-
-            #Create the object's repellent force
-            self.fVecX -= self.radius*math.cos(ang)
-            self.fVecY -= self.radius*math.sin(ang)
-
-        print(self.fVecX, self.fVecY)
-        #Convert to polar for motion
-        self.fr = math.sqrt(math.pow(self.fVecY,2) + math.pow(self.fVecX,2))
-        self.fAng = math.degrees(math.atan2(self.fVecY, self.fVecX))
-        
-        # print(self.fr, self.fAng)
+        return math.sqrt( math.pow(x,2) + math.pow(y,2) )
 
 
+    def getAngle(self, x, y):
+        """
+        Returns the angle from 0 to the given point in radians
+        """
+        return math.atan2(y,x)
+
+
+    def getCartPos(self, angle, dist):
+        """
+        Returns the cartsian point with repspect to the robot
+        """
+
+        #Convert to radians, handle wrapping
+        angle = math.radians(angle%360)
+        x = dist*math.cos(angle)
+        y = dist*math.sin(angle)
+        return x, y
+
+
+    def checkLaser(self, msg):
+        """
+        Identify all potential obstacles and sum their forces on the robot
+        """
+        netX = 0
+        netY = 0
+        b = .1
+
+        for i in range(0, 91):
+            if (msg.ranges[i] < 2) and (msg.ranges[i] != 0.0):
+                pointX, pointY = self.getCartPos(i, msg.ranges[i])
+                pointDist = self.getDist(pointX, pointY)
+                pointAng = self.getAngle(pointX, pointY)
+
+                #Based on the potential fields spaper
+                #Avoids entering radius of object
+                #Affect object repellant has is affected by distance to object
+                weight = (self.spread + self.radius - pointDist)
+                if weight > 0:
+                    netX += -b*weight*math.cos(pointAng)
+                    netY += -b*weight*math.sin(pointAng)
+
+        for i in range(270, 360):
+            if (msg.ranges[i] < 2) and (msg.ranges[i] != 0.0):
+                pointX, pointY = self.getCartPos(i, msg.ranges[i])
+                pointDist = self.getDist(pointX, pointY)
+                pointAng = self.getAngle(pointX, pointY)
+
+                #Based on the potential fields spaper
+                #Avoids entering radius of object
+                #Affect object repellant has is affected by distance to object
+                weight = (self.spread + self.radius - pointDist)
+                if weight > 0:
+                    netX += -b*weight*math.cos(pointAng)
+                    netY += -b*weight*math.sin(pointAng)
+
+        #Recorrect course once object is passed
+        for i in range(90, 270):
+            if (msg.ranges[i] < 2) and (msg.ranges[i] != 0.0):
+                pointX, pointY = self.getCartPos(i, msg.ranges[i])
+                pointDist = self.getDist(pointX, pointY)
+                pointAng = self.getAngle(pointX, pointY)
+
+                #Based on the potential fields spaper
+                #Avoids entering radius of object
+                #Affect object repellant has is affected by distance to object
+                weight = (self.spread + self.radius - pointDist)
+                if weight > 0:
+                    netX += b*weight*math.cos(pointAng)
+                    netY += b*weight*math.sin(pointAng)
+              
+              
+
+        netX += self.goalDist
+
+        linX = self.getDist(netX, netY)*self.kPLin
+        angZ = self.getAngle(netX, netY)*self.kPAng
+        print(linX,angZ)
+        self.publish(linX,angZ)
+            
 
     def run(self):
         """
         Move towards target while avoiding obstacles
         """
-        rospy.sleep(1)
 
         while not rospy.is_shutdown():
-            # linX = self.fr*self.kPLin
-            # angZ = self.fAng*self.kPAng
-            # self.publish(linX, angZ)
-            continue
+            rospy.spin()
 
 
 if __name__ == '__main__':

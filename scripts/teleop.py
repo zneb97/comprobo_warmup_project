@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Ben Ziemann
-Last updated: 9/2/18
+Last updated: 9/20/18
 
 Moves the Neato using teleop keystrokes
 """
@@ -49,8 +49,11 @@ def talker():
                     ",":[-.5,0],
                     ".":[-.5,1]}
         
-        msg.linear.x = keyDict[key][0]
-        msg.angular.z = keyDict[key][1]
+        if key not in keyDict:
+            print("Not valid key")
+        else:
+            msg.linear.x = keyDict[key][0]
+            msg.angular.z = keyDict[key][1]
 
         pub.publish(msg)
         rate.sleep()
