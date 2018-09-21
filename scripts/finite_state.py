@@ -104,7 +104,7 @@ class FiniteStateController:
             #Continue adding sides to better approximate a circle
             else:
                 shaped = 1
-                shaped = ShapeDriver(sideCounter, 0.5).run()
+                shaped = ShapeDriver(sideCounter, 1.0/(n/2.0)).run()
                 while(shaped == 1) and (not rospy.is_shutdown()):
                     continue
                 self.startX = self.x
